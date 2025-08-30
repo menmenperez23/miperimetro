@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Mapa 3D con menú plegable</title>
 
   <!-- Leaflet -->
@@ -19,59 +19,56 @@
   <style>
     html, body { height: 100%; margin: 0; }
     #map { height: 100%; width: 100%; }
-    #errorMessage {
-      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1200;
-      background: #e74c3c; color: #fff; padding: 15px; border-radius: 8px;
-      font-family: Arial, sans-serif; font-size: 16px; text-align: center; display: none;
-    }
+
+    /* Botón de menú */
     #menuBtn {
       position: absolute; top: 10px; left: 10px; z-index: 1100;
       background: #111827; color: #fff; border: none;
       padding: 10px 15px; border-radius: 8px; cursor: pointer;
       font-size: 16px; transition: background 0.3s;
-      touch-action: manipulation;
     }
     #menuBtn:hover { background: #1f2937; }
+
+    /* Panel lateral */
     #panel {
       position: absolute; top: 60px; left: 10px; z-index: 1100;
       background: rgba(255,255,255,0.98); padding: 15px;
       border-radius: 12px; font-family: Arial, sans-serif; font-size: 14px;
-      box-shadow: 0 6px 14px rgba(0,0,0,0.2); max-width: 90vw; width: 300px;
+      box-shadow: 0 6px 14px rgba(0,0,0,0.2); max-width: 300px;
       display: none; transition: opacity 0.3s ease;
-      touch-action: manipulation;
     }
     #panel.show { display: block; opacity: 1; }
     #panel.hide { display: none; opacity: 0; }
+
     .photo-popup img { max-width: 240px; border-radius: 10px; display: block; }
     .photo-popup .cap { font-size: 12px; margin-top: 6px; opacity: 0.85; }
+
     #panel input, #panel select, #panel button {
       margin: 8px 0; width: 100%; padding: 8px; border-radius: 6px;
-      border: 1px solid #ddd; box-sizing: border-box; font-size: 14px;
+      border: 1px solid #ddd; box-sizing: border-box;
     }
     #panel button {
       background: #111827; color: #fff; border: none; cursor: pointer;
-      transition: background 0.3s; touch-action: manipulation;
+      transition: background 0.3s;
     }
     #panel button:hover { background: #1f2937; }
     #panel button.delete { background: #e74c3c; }
     #panel button.delete:hover { background: #c0392b; }
+
     .toolbar {
       position: absolute; bottom: 10px; left: 10px; z-index: 1100;
       background: rgba(255,255,255,0.95); padding: 10px;
       border-radius: 8px; font-size: 14px; box-shadow: 0 4px 10px rgba(0,0,0,0.1);
     }
-    @media (max-width: 600px) {
-      #menuBtn { padding: 8px 12px; font-size: 14px; }
-      #panel { top: 50px; font-size: 12px; }
-      #panel input, #panel select, #panel button { font-size: 12px; padding: 6px; }
-      #errorMessage { font-size: 14px; padding: 10px; max-width: 90vw; }
-    }
   </style>
 </head>
 <body>
-<div id="errorMessage"></div>
 <div id="map"></div>
+
+<!-- Botón para mostrar/ocultar -->
 <button id="menuBtn">☰ Menú</button>
+
+<!-- Panel lateral -->
 <div id="panel" class="hide">
   <button id="toggleMark">Activar modo marcar</button>
   <hr>
@@ -82,57 +79,30 @@
   <button id="saveEdit">Guardar cambios</button>
   <button id="deletePoint" class="delete">Eliminar punto</button>
   <hr>
-  <label><b>Compartir ubicación:</b></label>
-  <select id="shareSelect"></select>
-  <button id="shareLocation">Compartir punto</button>
-  <hr>
   <label><b>Calcular ruta:</b></label>
   <select id="startRoute"></select>
   <span>→</span>
   <select id="endRoute"></select>
   <button id="calcRoute">Calcular</button>
 </div>
+
 <div class="toolbar"><span id="status">Listo</span></div>
 
 <script>
-  // Verificar si Leaflet está disponible
-  if (typeof L === 'undefined') {
-    console.error("Leaflet no está cargado. Verifica tu conexión a internet.");
-    document.getElementById("status").textContent = "Error: No se pudo cargar Leaflet";
-    document.getElementById("errorMessage").style.display = "block";
-    document.getElementById("errorMessage").textContent = "Error: No se pudo cargar el mapa. Verifica tu conexión a internet o recarga la página.";
-    throw new Error("Leaflet no está cargado");
-  }
+  // ================== Configuración inicial ==================
+  const limites = L.latLngBounds([
+    [18.4750, -69.7310],
+    [18.4770, -69.7245]
+  ]);
+  const map = L.map('map', { maxBounds: limites, minZoom: 17, maxZoom: 20 })
+               .fitBounds(limites);
 
-  // Configuración inicial del mapa
-  let map;
-  try {
-    const limites = L.latLngBounds([
-      [18.4750, -69.7310],
-      [18.4770, -69.7245]
-    ]);
-    map = L.map('map', {
-      maxBounds: limites,
-      minZoom: 17,
-      maxZoom: 20,
-      tap: true,
-      tapTolerance: 15
-    }).fitBounds(limites);
+  // Capa de tiles de OpenStreetMap
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 20, attribution: '© OpenStreetMap contributors'
+  }).addTo(map);
 
-    // Capa de tiles de OpenStreetMap
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 20,
-      attribution: '© OpenStreetMap contributors'
-    }).addTo(map);
-  } catch (e) {
-    console.error("Error al inicializar el mapa:", e);
-    document.getElementById("status").textContent = "Error al cargar el mapa";
-    document.getElementById("errorMessage").style.display = "block";
-    document.getElementById("errorMessage").textContent = "Error al inicializar el mapa. Por favor, recarga la página.";
-    throw e;
-  }
-
-  // Añadir edificios 3D con OSMBuildings
+  // Añadir edificios 3D con OSMBuildings (con manejo de errores)
   let buildings = null;
   if (typeof OSMBuildings !== 'undefined') {
     try {
@@ -140,77 +110,55 @@
       console.log('OSMBuildings cargado correctamente');
     } catch (e) {
       console.error('Error al inicializar OSMBuildings:', e);
-      document.getElementById("status").textContent = "No se pudieron cargar los edificios 3D";
+      setStatus('No se pudieron cargar los edificios 3D');
     }
   } else {
     console.warn('OSMBuildings no está definido. Continuando sin edificios 3D.');
-    document.getElementById("status").textContent = "No se pudieron cargar los edificios 3D";
+    setStatus('No se pudieron cargar los edificios 3D');
   }
 
-  // Estado global
-  let puntos = [];
-  try {
-    puntos = JSON.parse(localStorage.getItem('puntos')) || [
-      { id: "tecno", coords: [18.4759788, -69.7261934], nombre: "Tecno Stream / Piscina La Bruja", foto: null }
-    ];
-  } catch (e) {
-    console.error("Error al cargar localStorage:", e);
-    puntos = [{ id: "tecno", coords: [18.4759788, -69.7261934], nombre: "Tecno Stream / Piscina La Bruja", foto: null }];
-    document.getElementById("status").textContent = "Error al cargar datos, usando valores predeterminados";
-  }
+  // ================== Estado global ==================
+  let puntos = JSON.parse(localStorage.getItem('puntos')) || [
+    { id: "tecno", coords: [18.4759788, -69.7261934], nombre: "Tecno Stream / Piscina La Bruja", foto: null }
+  ];
   const markers = {};
   let routingControl = null;
   let markMode = false;
 
-  // Funciones auxiliares
+  // ================== Funciones auxiliares ==================
   function savePoints() {
-    try {
-      localStorage.setItem('puntos', JSON.stringify(puntos));
-    } catch (e) {
-      console.error("Error al guardar en localStorage:", e);
-      document.getElementById("status").textContent = "Error al guardar datos";
-    }
+    localStorage.setItem('puntos', JSON.stringify(puntos));
   }
 
   function makePopup(nombre, foto) {
     return `
       <div class="photo-popup">
-        ${foto ? `<img src="${foto}" alt="${nombre}" loading="lazy" style="max-width: 100%;">` : ""}
+        ${foto ? `<img src="${foto}" alt="${nombre}" loading="lazy">` : ""}
         <div class="cap">${nombre}</div>
       </div>`;
   }
 
   function addMarker(p) {
-    try {
-      const marker = L.marker(p.coords).addTo(map);
-      marker.bindPopup(makePopup(p.nombre, p.foto));
-      markers[p.id] = marker;
-      refreshSelectors();
-    } catch (e) {
-      console.error("Error al añadir marcador:", e);
-      document.getElementById("status").textContent = "Error al añadir marcador";
-    }
+    const marker = L.marker(p.coords).addTo(map);
+    marker.bindPopup(makePopup(p.nombre, p.foto));
+    markers[p.id] = marker;
+    refreshSelectors();
   }
 
   function refreshSelectors() {
-    try {
-      const editSel = document.getElementById("editSelect");
-      const startSel = document.getElementById("startRoute");
-      const endSel = document.getElementById("endRoute");
-      const shareSel = document.getElementById("shareSelect");
-      [editSel, startSel, endSel, shareSel].forEach(sel => {
-        sel.innerHTML = '<option value="">Selecciona un punto</option>';
-        puntos.forEach(p => {
-          const opt = document.createElement("option");
-          opt.value = p.id;
-          opt.textContent = p.nombre;
-          sel.appendChild(opt);
-        });
+    const editSel = document.getElementById("editSelect");
+    const startSel = document.getElementById("startRoute");
+    const endSel = document.getElementById("endRoute");
+    [editSel, startSel, endSel].forEach(sel => sel.innerHTML = '<option value="">Selecciona un punto</option>');
+
+    puntos.forEach(p => {
+      [editSel, startSel, endSel].forEach(sel => {
+        const opt = document.createElement("option");
+        opt.value = p.id;
+        opt.textContent = p.nombre;
+        sel.appendChild(opt);
       });
-    } catch (e) {
-      console.error("Error al actualizar selectores:", e);
-      document.getElementById("status").textContent = "Error al actualizar opciones";
-    }
+    });
   }
 
   function setStatus(msg) {
@@ -219,7 +167,7 @@
     setTimeout(() => { if (status.textContent === msg) status.textContent = "Listo"; }, 3000);
   }
 
-  // Crear punto manual
+  // ================== Crear punto manual ==================
   function addNewPoint(latlng) {
     const nombre = prompt("Nombre del punto:", "Nuevo lugar");
     if (!nombre || nombre.trim() === "") {
@@ -234,60 +182,21 @@
     setStatus("Punto creado: " + nombre);
   }
 
-  // Inicialización
+  // ================== Inicialización ==================
   puntos.forEach(p => addMarker(p));
 
-  // Eventos
+  // ================== Eventos ==================
   document.getElementById("toggleMark").addEventListener("click", () => {
     markMode = !markMode;
     document.getElementById("toggleMark").textContent = markMode ? "Desactivar modo marcar" : "Activar modo marcar";
-    setStatus(markMode ? "Modo marcar activado (toque el mapa)" : "Modo marcar desactivado");
+    setStatus(markMode ? "Modo marcar activado (clic en el mapa)" : "Modo marcar desactivado");
   });
 
-  map.on("click touchstart", e => {
-    if (markMode) {
-      const touch = e.originalEvent && e.originalEvent.touches && e.originalEvent.touches.length === 1;
-      if (e.type === "click" || (e.type === "touchstart" && touch)) {
-        addNewPoint(e.latlng);
-      }
-    }
+  map.on("click", e => {
+    if (markMode) addNewPoint(e.latlng);
   });
 
-  // Compartir ubicación
-  document.getElementById("shareLocation").addEventListener("click", () => {
-    const selId = document.getElementById("shareSelect").value;
-    if (!selId) {
-      setStatus("Selecciona un punto para compartir");
-      return;
-    }
-    const p = puntos.find(x => x.id === selId);
-    if (!p) {
-      setStatus("Punto no encontrado");
-      return;
-    }
-    const url = `https://www.openstreetmap.org/?mlat=${p.coords[0]}&mlon=${p.coords[1]}#map=18/${p.coords[0]}/${p.coords[1]}`;
-    const shareData = {
-      title: `Ubicación: ${p.nombre}`,
-      text: `Mira este lugar: ${p.nombre}`,
-      url: url
-    };
-    if (navigator.share) {
-      navigator.share(shareData)
-        .then(() => setStatus("Ubicación compartida"))
-        .catch(e => {
-          console.error("Error al compartir:", e);
-          setStatus("Error al compartir: " + e.message);
-        });
-    } else {
-      navigator.clipboard.writeText(url)
-        .then(() => setStatus("Enlace copiado al portapapeles"))
-        .catch(e => {
-          console.error("Error al copiar:", e);
-          setStatus("Error al copiar enlace: " + e.message);
-        });
-    }
-  });
-
+  // Guardar edición
   document.getElementById("saveEdit").addEventListener("click", () => {
     const selId = document.getElementById("editSelect").value;
     const nuevoNombre = document.getElementById("editName").value.trim();
@@ -321,6 +230,7 @@
     }
   });
 
+  // Eliminar punto
   document.getElementById("deletePoint").addEventListener("click", () => {
     const selId = document.getElementById("editSelect").value;
     if (!selId) {
@@ -339,6 +249,7 @@
     setStatus("Punto eliminado");
   });
 
+  // Calcular ruta
   document.getElementById("calcRoute").addEventListener("click", () => {
     const startId = document.getElementById("startRoute").value;
     const endId = document.getElementById("endRoute").value;
@@ -360,24 +271,20 @@
       routingControl = null;
     }
 
-    try {
-      routingControl = L.Routing.control({
-        waypoints: [L.latLng(start), L.latLng(end)],
-        routeWhileDragging: false,
-        addWaypoints: false,
-        draggableWaypoints: false,
-        createMarker: () => null,
-        lineOptions: { styles: [{ color: '#111827', weight: 4 }] }
-      }).addTo(map);
+    routingControl = L.Routing.control({
+      waypoints: [L.latLng(start), L.latLng(end)],
+      routeWhileDragging: false,
+      addWaypoints: false,
+      draggableWaypoints: false,
+      createMarker: () => null,
+      lineOptions: { styles: [{ color: '#111827', weight: 4 }] }
+    }).addTo(map);
 
-      routingControl.on('routesfound', () => setStatus("Ruta calculada"));
-      routingControl.on('routingerror', () => setStatus("Error al calcular la ruta"));
-    } catch (e) {
-      console.error("Error al calcular la ruta:", e);
-      document.getElementById("status").textContent = "Error al calcular la ruta";
-    }
+    routingControl.on('routesfound', () => setStatus("Ruta calculada"));
+    routingControl.on('routingerror', () => setStatus("Error al calcular la ruta"));
   });
 
+  // Mostrar/Ocultar panel
   document.getElementById("menuBtn").addEventListener("click", () => {
     const panel = document.getElementById("panel");
     panel.classList.toggle("show");
@@ -386,3 +293,5 @@
 </script>
 </body>
 </html>
+
+
