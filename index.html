@@ -65,6 +65,10 @@
 <div id="panel" class="hide">
   <button id="toggleMark">Activar modo marcar</button>
   <hr>
+  <label><b>Agregar punto:</b></label>
+  <input id="newPointName" type="text" placeholder="Nombre del nuevo punto">
+  <button id="confirmNewPoint">Confirmar nuevo punto</button>
+  <hr>
   <label><b>Editar punto:</b></label>
   <select id="editSelect"></select>
   <input id="editName" type="text" placeholder="Nuevo nombre">
@@ -82,22 +86,28 @@
 
 <script>
   // Configuración inicial del mapa
-  const limites = L.latLngBounds([
-    [18.4750, -69.7310],
-    [18.4770, -69.7245]
-  ]);
-  const map = L.map('map', {
-    maxBounds: limites,
-    minZoom: 17,
-    maxZoom: 20,
-    tap: true, // Habilitar eventos táctiles en móviles
-    tapTolerance: 15 // Mejorar precisión en móviles
-  }).fitBounds(limites);
+  try {
+    const limites = L.latLngBounds([
+      [18.4750, -69.7310],
+      [18.4770, -69.7245]
+    ]);
+    const map = L.map('map', {
+      maxBounds: limites,
+      minZoom: 17,
+      maxZoom: 20,
+      tap: true,
+      tapTolerance: 15
+    }).fitBounds(limites);
 
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 20,
-    attribution: '© OpenStreetMap contributors'
-  }).addTo(map);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 20,
+      attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+  } catch (e) {
+    console.error("Error al inicializar el mapa:", e);
+    document.getElementById("status").textContent = "Error al cargar el mapa";
+    throw e; // Para depuración
+  }
 
   // Estado global
   let puntos = [];
@@ -108,7 +118,7 @@
   } catch (e) {
     console.error("Error al cargar localStorage:", e);
     puntos = [{ id: "tecno", coords: [18.4759788, -69.7261934], nombre: "Tecno Stream / Piscina La Bruja", foto: null }];
-    setStatus("Error al cargar datos, usando valores predeterminados");
+    document.getElementById("status").textContent = "Error al cargar datos, usando valores predeterminados";
   }
   const markers = {};
   let routingControl = null;
@@ -120,7 +130,7 @@
       localStorage.setItem('puntos', JSON.stringify(puntos));
     } catch (e) {
       console.error("Error al guardar en localStorage:", e);
-      setStatus("Error al guardar datos");
+      document.getElementById("status").textContent = "Error al guardar datos";
     }
   }
 
@@ -133,25 +143,35 @@
   }
 
   function addMarker(p) {
-    const marker = L.marker(p.coords).addTo(map);
-    marker.bindPopup(makePopup(p.nombre, p.foto));
-    markers[p.id] = marker;
-    refreshSelectors();
+    try {
+      const marker = L.marker(p.coords).addTo(map);
+      marker.bindPopup(makePopup(p.nombre, p.foto));
+      markers[p.id] = marker;
+      refreshSelectors();
+    } catch (e) {
+      console.error("Error al añadir marcador:", e);
+      document.getElementById("status").textContent = "Error al añadir marcador";
+    }
   }
 
   function refreshSelectors() {
-    const editSel = document.getElementById("editSelect");
-    const startSel = document.getElementById("startRoute");
-    const endSel = document.getElementById("endRoute");
-    [editSel, startSel, endSel].forEach(sel => {
-      sel.innerHTML = '<option value="">Selecciona un punto</option>';
-      puntos.forEach(p => {
-        const opt = document.createElement("option");
-        opt.value = p.id;
-        opt.textContent = p.nombre;
-        sel.appendChild(opt);
+    try {
+      const editSel = document.getElementById("editSelect");
+      const startSel = document.getElementById("startRoute");
+      const endSel = document.getElementById("endRoute");
+      [editSel, startSel, endSel].forEach(sel => {
+        sel.innerHTML = '<option value="">Selecciona un punto</option>';
+        puntos.forEach(p => {
+          const opt = document.createElement("option");
+          opt.value = p.id;
+          opt.textContent = p.nombre;
+          sel.appendChild(opt);
+        });
       });
-    });
+    } catch (e) {
+      console.error("Error al actualizar selectores:", e);
+      document.getElementById("status").textContent = "Error al actualizar opciones";
+    }
   }
 
   function setStatus(msg) {
@@ -172,26 +192,32 @@
 
   function handleMapClick(e) {
     if (markMode) {
-      const nombre = prompt("Nombre del punto:", "Nuevo lugar");
-      if (!nombre || nombre.trim() === "") {
-        setStatus("Nombre inválido, punto no creado");
+      const nombre = document.getElementById("newPointName").value.trim();
+      if (!nombre) {
+        setStatus("Ingresa un nombre para el punto");
         return;
       }
       const id = "p" + Date.now();
-      const p = { id, coords: [e.latlng.lat, e.latlng.lng], nombre: nombre.trim(), foto: null };
+      const p = { id, coords: [e.latlng.lat, e.latlng.lng], nombre, foto: null };
       puntos.push(p);
       savePoints();
       addMarker(p);
       setStatus("Punto creado: " + nombre);
+      document.getElementById("newPointName").value = "";
     }
   }
 
-  map.on("click", handleMapClick);
-  map.on("touchstart", e => {
-    // Convertir evento táctil a formato compatible con click
-    if (markMode && e.originalEvent.touches && e.originalEvent.touches.length === 1) {
-      handleMapClick({ latlng: e.latlng });
+  document.getElementById("confirmNewPoint").addEventListener("click", () => {
+    if (!markMode) {
+      setStatus("Activa el modo marcar primero");
+      return;
     }
+    map.once("click touchstart", e => {
+      const touch = e.originalEvent && e.originalEvent.touches && e.originalEvent.touches.length === 1;
+      if (e.type === "click" || (e.type === "touchstart" && touch)) {
+        handleMapClick({ latlng: e.latlng });
+      }
+    });
   });
 
   document.getElementById("saveEdit").addEventListener("click", () => {
@@ -287,5 +313,6 @@
 </script>
 </body>
 </html>
+
 
 
