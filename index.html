@@ -3,21 +3,29 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-  <title>Mapa con menú plegable</title>
+  <title>Mapa 3D con menú plegable</title>
 
-  <!-- Leaflet (local) -->
-  <link rel="stylesheet" href="lib/leaflet.css"/>
-  <script src="lib/leaflet.js"></script>
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-  <!-- Leaflet Routing Machine (local) -->
-  <link rel="stylesheet" href="lib/leaflet-routing-machine.css"/>
-  <script src="lib/leaflet-routing-machine.js"></script>
+  <!-- Leaflet Routing Machine -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css"/>
+  <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
+
+  <!-- OSMBuildings para edificios 3D -->
+  <script src="https://cdn.jsdelivr.net/npm/osmbuildings@0.4.2/dist/OSMBuildings.js"></script>
 
   <style>
     html, body { height: 100%; margin: 0; }
     #map { height: 100%; width: 100%; }
+    #errorMessage {
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 1200;
+      background: #e74c3c; color: #fff; padding: 15px; border-radius: 8px;
+      font-family: Arial, sans-serif; font-size: 16px; text-align: center; display: none;
+    }
     #menuBtn {
-      position: fixed; top: 10px; left: 10px; z-index: 1100;
+      position: absolute; top: 10px; left: 10px; z-index: 1100;
       background: #111827; color: #fff; border: none;
       padding: 10px 15px; border-radius: 8px; cursor: pointer;
       font-size: 16px; transition: background 0.3s;
@@ -25,7 +33,7 @@
     }
     #menuBtn:hover { background: #1f2937; }
     #panel {
-      position: fixed; top: 60px; left: 10px; z-index: 1100;
+      position: absolute; top: 60px; left: 10px; z-index: 1100;
       background: rgba(255,255,255,0.98); padding: 15px;
       border-radius: 12px; font-family: Arial, sans-serif; font-size: 14px;
       box-shadow: 0 6px 14px rgba(0,0,0,0.2); max-width: 90vw; width: 300px;
@@ -34,7 +42,7 @@
     }
     #panel.show { display: block; opacity: 1; }
     #panel.hide { display: none; opacity: 0; }
-    .photo-popup img { max-width: 100%; border-radius: 10px; display: block; }
+    .photo-popup img { max-width: 240px; border-radius: 10px; display: block; }
     .photo-popup .cap { font-size: 12px; margin-top: 6px; opacity: 0.85; }
     #panel input, #panel select, #panel button {
       margin: 8px 0; width: 100%; padding: 8px; border-radius: 6px;
@@ -48,7 +56,7 @@
     #panel button.delete { background: #e74c3c; }
     #panel button.delete:hover { background: #c0392b; }
     .toolbar {
-      position: fixed; bottom: 10px; left: 10px; z-index: 1100;
+      position: absolute; bottom: 10px; left: 10px; z-index: 1100;
       background: rgba(255,255,255,0.95); padding: 10px;
       border-radius: 8px; font-size: 14px; box-shadow: 0 4px 10px rgba(0,0,0,0.1);
     }
@@ -56,25 +64,16 @@
       #menuBtn { padding: 8px 12px; font-size: 14px; }
       #panel { top: 50px; font-size: 12px; }
       #panel input, #panel select, #panel button { font-size: 12px; padding: 6px; }
+      #errorMessage { font-size: 14px; padding: 10px; max-width: 90vw; }
     }
   </style>
 </head>
 <body>
+<div id="errorMessage"></div>
 <div id="map"></div>
 <button id="menuBtn">☰ Menú</button>
 <div id="panel" class="hide">
   <button id="toggleMark">Activar modo marcar</button>
-  <hr>
-  <label><b>Agregar punto:</b></label>
-  <input id="newPointName" type="text" placeholder="Nombre del nuevo punto">
-  <button id="confirmNewPoint">Confirmar nuevo punto</button>
-  <hr>
-  <label><b>Obtener mi ubicación:</b></label>
-  <button id="getLocation">Usar mi ubicación actual</button>
-  <hr>
-  <label><b>Compartir ubicación:</b></label>
-  <select id="shareSelect"></select>
-  <button id="shareLocation">Compartir punto</button>
   <hr>
   <label><b>Editar punto:</b></label>
   <select id="editSelect"></select>
@@ -82,6 +81,10 @@
   <input id="editPhoto" type="file" accept="image/*">
   <button id="saveEdit">Guardar cambios</button>
   <button id="deletePoint" class="delete">Eliminar punto</button>
+  <hr>
+  <label><b>Compartir ubicación:</b></label>
+  <select id="shareSelect"></select>
+  <button id="shareLocation">Compartir punto</button>
   <hr>
   <label><b>Calcular ruta:</b></label>
   <select id="startRoute"></select>
@@ -94,8 +97,10 @@
 <script>
   // Verificar si Leaflet está disponible
   if (typeof L === 'undefined') {
-    console.error("Leaflet no está cargado. Verifica que lib/leaflet.js esté disponible.");
+    console.error("Leaflet no está cargado. Verifica tu conexión a internet.");
     document.getElementById("status").textContent = "Error: No se pudo cargar Leaflet";
+    document.getElementById("errorMessage").style.display = "block";
+    document.getElementById("errorMessage").textContent = "Error: No se pudo cargar el mapa. Verifica tu conexión a internet o recarga la página.";
     throw new Error("Leaflet no está cargado");
   }
 
@@ -114,6 +119,7 @@
       tapTolerance: 15
     }).fitBounds(limites);
 
+    // Capa de tiles de OpenStreetMap
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 20,
       attribution: '© OpenStreetMap contributors'
@@ -121,7 +127,24 @@
   } catch (e) {
     console.error("Error al inicializar el mapa:", e);
     document.getElementById("status").textContent = "Error al cargar el mapa";
+    document.getElementById("errorMessage").style.display = "block";
+    document.getElementById("errorMessage").textContent = "Error al inicializar el mapa. Por favor, recarga la página.";
     throw e;
+  }
+
+  // Añadir edificios 3D con OSMBuildings
+  let buildings = null;
+  if (typeof OSMBuildings !== 'undefined') {
+    try {
+      buildings = new OSMBuildings(map).load();
+      console.log('OSMBuildings cargado correctamente');
+    } catch (e) {
+      console.error('Error al inicializar OSMBuildings:', e);
+      document.getElementById("status").textContent = "No se pudieron cargar los edificios 3D";
+    }
+  } else {
+    console.warn('OSMBuildings no está definido. Continuando sin edificios 3D.');
+    document.getElementById("status").textContent = "No se pudieron cargar los edificios 3D";
   }
 
   // Estado global
@@ -196,7 +219,22 @@
     setTimeout(() => { if (status.textContent === msg) status.textContent = "Listo"; }, 3000);
   }
 
-  // Cargar puntos iniciales
+  // Crear punto manual
+  function addNewPoint(latlng) {
+    const nombre = prompt("Nombre del punto:", "Nuevo lugar");
+    if (!nombre || nombre.trim() === "") {
+      setStatus("Nombre inválido, punto no creado");
+      return;
+    }
+    const id = "p" + Date.now();
+    const p = { id, coords: [latlng.lat, latlng.lng], nombre: nombre.trim(), foto: null };
+    puntos.push(p);
+    savePoints();
+    addMarker(p);
+    setStatus("Punto creado: " + nombre);
+  }
+
+  // Inicialización
   puntos.forEach(p => addMarker(p));
 
   // Eventos
@@ -206,66 +244,13 @@
     setStatus(markMode ? "Modo marcar activado (toque el mapa)" : "Modo marcar desactivado");
   });
 
-  function handleMapClick(e) {
+  map.on("click touchstart", e => {
     if (markMode) {
-      const nombre = document.getElementById("newPointName").value.trim();
-      if (!nombre) {
-        setStatus("Ingresa un nombre para el punto");
-        return;
-      }
-      const id = "p" + Date.now();
-      const p = { id, coords: [e.latlng.lat, e.latlng.lng], nombre, foto: null };
-      puntos.push(p);
-      savePoints();
-      addMarker(p);
-      setStatus("Punto creado: " + nombre);
-      document.getElementById("newPointName").value = "";
-    }
-  }
-
-  document.getElementById("confirmNewPoint").addEventListener("click", () => {
-    if (!markMode) {
-      setStatus("Activa el modo marcar primero");
-      return;
-    }
-    map.once("click touchstart", e => {
       const touch = e.originalEvent && e.originalEvent.touches && e.originalEvent.touches.length === 1;
       if (e.type === "click" || (e.type === "touchstart" && touch)) {
-        handleMapClick({ latlng: e.latlng });
+        addNewPoint(e.latlng);
       }
-    });
-  });
-
-  // Obtener ubicación actual
-  document.getElementById("getLocation").addEventListener("click", () => {
-    if (!navigator.geolocation) {
-      setStatus("Geolocalización no soportada en este navegador");
-      return;
     }
-    navigator.geolocation.getCurrentPosition(
-      position => {
-        const lat = position.coords.latitude;
-        const lng = position.coords.longitude;
-        if (!limites.contains([lat, lng])) {
-          setStatus("Ubicación fuera del área permitida");
-          return;
-        }
-        const nombre = document.getElementById("newPointName").value.trim() || "Mi ubicación";
-        const id = "p" + Date.now();
-        const p = { id, coords: [lat, lng], nombre, foto: null };
-        puntos.push(p);
-        savePoints();
-        addMarker(p);
-        map.setView([lat, lng], 18);
-        setStatus("Ubicación añadida: " + nombre);
-        document.getElementById("newPointName").value = "";
-      },
-      error => {
-        console.error("Error al obtener la ubicación:", error);
-        setStatus("Error al obtener la ubicación: " + error.message);
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-    );
   });
 
   // Compartir ubicación
@@ -401,9 +386,3 @@
 </script>
 </body>
 </html>
-
-
-
-
-
-
